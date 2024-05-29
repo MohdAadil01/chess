@@ -1,3 +1,4 @@
+const { Chess } = require("chess.js");
 const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
@@ -10,18 +11,46 @@ const io = socketIo(server, {
     methods: ["GET", "POST"],
   },
 });
+const chess = new Chess();
+let players = {};
+let currentPlayer = "w";
 
 io.on("connection", (socket) => {
-  console.log("New client connected");
+  if (!players.white) {
+    players.white = socket.id;
+    socket.emit("playerRole", "w");
+  } else if (!players.black) {
+    players.black = socket.id;
+    socket.emit("playerRole", "b");
+  } else {
+    socket.emit("spectatorRole");
+  }
 
-  // Handle events from the client
-  socket.on("message", (message) => {
-    console.log(`Message from client: ${message}`);
+  socket.on("move", (move) => {
+    try {
+      if (chess.turn() === "w" && socket.id !== players.white) return;
+      if (chess.turn() === "b" && socket.id !== players.black) return;
+
+      const result = chess.move(move);
+      if (result) {
+        currentPlayer = chess.turn();
+        io.emit("move", move);
+        io.emit("boardState", chess.fen());
+      } else {
+        console.log("Invalid move :" + move);
+        socket.emit("invalidMove", move);
+      }
+    } catch (error) {
+      console.log("Error while handling move " + error);
+    }
   });
 
-  // Handle client disconnect
   socket.on("disconnect", () => {
-    console.log("Client disconnected");
+    if (socket.id === players.white) {
+      delete players.white;
+    } else if (socket.id === players.black) {
+      delete players.black;
+    }
   });
 });
 
